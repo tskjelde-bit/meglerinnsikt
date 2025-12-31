@@ -155,9 +155,15 @@
       transform-style: preserve-3d;
       animation: spin 36s linear infinite;
       transition: transform 900ms ease;
+      cursor: grab;
     }
 
     .oslo-map.is-zoomed {
+      animation-play-state: paused;
+    }
+
+    .oslo-map.is-interacting {
+      cursor: grabbing;
       animation-play-state: paused;
     }
 
@@ -284,6 +290,23 @@
       opacity: 0;
       transform: translateY(20px);
       transition: opacity 400ms ease, transform 400ms ease;
+    }
+
+    .zone-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .zone-card-close {
+      background: transparent;
+      border: none;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 18px;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
     }
 
     .zone-card.is-visible {
@@ -477,7 +500,7 @@
       <div class="hero-left">
         <div class="map-shell">
           <h2>Utforsk Oslo</h2>
-          <p>Dra for å spinne og trykk på en bydel for å zoome inn på nøkkeltall.</p>
+          <p>Dra for å rotere kartet og trykk på en bydel for å zoome inn på nøkkeltall.</p>
           <div class="map-stage">
             <div class="oslo-map" id="osloMap">
               <div class="map-plate"></div>
@@ -496,9 +519,12 @@
           </div>
 
           <div class="zone-card" id="zoneCard">
-            <div>
-              <h3 id="zoneTitle">Velg en bydel</h3>
-              <p id="zoneDescription">Klikk en pin for å se korte boligtall.</p>
+            <div class="zone-card-header">
+              <div>
+                <h3 id="zoneTitle">Velg en bydel</h3>
+                <p id="zoneDescription">Klikk en pin for å se korte boligtall.</p>
+              </div>
+              <button class="zone-card-close" id="zoneClose" aria-label="Lukk">×</button>
             </div>
             <div class="zone-stats" id="zoneStats">
               <div>Pris/m² <strong>–</strong></div>
@@ -553,50 +579,50 @@
         title: "Frogner",
         description: "Prisnivå og lav omsetningstid med stabil etterspørsel.",
         stats: [
-          "Pris/m² 108 400",
-          "Solgt 30 dager 184",
-          "Omsetningstid 28 dager",
-          "Prisendring +3,2 %",
+          { label: "Pris/m²", value: "108 400" },
+          { label: "Solgt 30 dager", value: "184" },
+          { label: "Omsetningstid", value: "28 dager" },
+          { label: "Prisendring", value: "+3,2 %" },
         ],
       },
       "st-hanshaugen": {
         title: "St. Hanshaugen",
         description: "Høy aktivitet i leilighetsmarkedet og jevne prissteg.",
         stats: [
-          "Pris/m² 96 900",
-          "Solgt 30 dager 142",
-          "Omsetningstid 31 dager",
-          "Prisendring +2,6 %",
+          { label: "Pris/m²", value: "96 900" },
+          { label: "Solgt 30 dager", value: "142" },
+          { label: "Omsetningstid", value: "31 dager" },
+          { label: "Prisendring", value: "+2,6 %" },
         ],
       },
       grunerlokka: {
         title: "Grünerløkka",
         description: "Sterk leilighetsinteresse og rask omløpshastighet.",
         stats: [
-          "Pris/m² 94 200",
-          "Solgt 30 dager 201",
-          "Omsetningstid 27 dager",
-          "Prisendring +3,9 %",
+          { label: "Pris/m²", value: "94 200" },
+          { label: "Solgt 30 dager", value: "201" },
+          { label: "Omsetningstid", value: "27 dager" },
+          { label: "Prisendring", value: "+3,9 %" },
         ],
       },
       "gamle-oslo": {
         title: "Gamle Oslo",
         description: "Blandede boligtyper med økende etterspørsel.",
         stats: [
-          "Pris/m² 88 700",
-          "Solgt 30 dager 156",
-          "Omsetningstid 33 dager",
-          "Prisendring +2,1 %",
+          { label: "Pris/m²", value: "88 700" },
+          { label: "Solgt 30 dager", value: "156" },
+          { label: "Omsetningstid", value: "33 dager" },
+          { label: "Prisendring", value: "+2,1 %" },
         ],
       },
       "nordre-aker": {
         title: "Nordre Aker",
         description: "Familieboliger med sterk prisutvikling.",
         stats: [
-          "Pris/m² 82 300",
-          "Solgt 30 dager 98",
-          "Omsetningstid 36 dager",
-          "Prisendring +3,5 %",
+          { label: "Pris/m²", value: "82 300" },
+          { label: "Solgt 30 dager", value: "98" },
+          { label: "Omsetningstid", value: "36 dager" },
+          { label: "Prisendring", value: "+3,5 %" },
         ],
       },
     };
@@ -606,6 +632,30 @@
     const zoneTitle = document.getElementById("zoneTitle");
     const zoneDescription = document.getElementById("zoneDescription");
     const zoneStats = document.getElementById("zoneStats");
+    const zoneClose = document.getElementById("zoneClose");
+    const mapState = {
+      rotation: 0,
+      isZoomed: false,
+      isInteracting: false,
+      startX: 0,
+      startRotation: 0,
+    };
+
+    const updateMapTransform = () => {
+      const scale = mapState.isZoomed ? 1.12 : 1;
+      osloMap.style.transform = `scale(${scale}) rotateZ(${mapState.rotation}deg) rotateY(12deg)`;
+    };
+
+    const resumeSpin = () => {
+      if (!mapState.isZoomed && !mapState.isInteracting) {
+        osloMap.style.transform = "";
+        osloMap.style.animationPlayState = "running";
+      }
+    };
+
+    const pauseSpin = () => {
+      osloMap.style.animationPlayState = "paused";
+    };
 
     document.querySelectorAll(".pin").forEach((pin) => {
       pin.addEventListener("click", () => {
@@ -615,22 +665,55 @@
         zoneTitle.textContent = data.title;
         zoneDescription.textContent = data.description;
         zoneStats.innerHTML = data.stats
-          .map((item) => {
-            const [label, value] = item.split(/\s(?=\d|\+)/);
-            return `<div>${label} <strong>${value}</strong></div>`;
-          })
+          .map((item) => `<div>${item.label} <strong>${item.value}</strong></div>`)
           .join("");
 
         zoneCard.classList.add("is-visible");
+        mapState.isZoomed = true;
+        mapState.rotation = 320;
         osloMap.classList.add("is-zoomed");
-        osloMap.style.transform = "scale(1.12) rotateZ(320deg) rotateY(8deg)";
+        pauseSpin();
+        updateMapTransform();
       });
     });
 
-    osloMap.addEventListener("mouseleave", () => {
+    zoneClose.addEventListener("click", () => {
+      mapState.isZoomed = false;
+      zoneCard.classList.remove("is-visible");
       osloMap.classList.remove("is-zoomed");
-      osloMap.style.transform = "";
+      resumeSpin();
     });
+
+    osloMap.addEventListener("pointerdown", (event) => {
+      mapState.isInteracting = true;
+      mapState.startX = event.clientX;
+      mapState.startRotation = mapState.rotation;
+      osloMap.classList.add("is-interacting");
+      pauseSpin();
+      osloMap.setPointerCapture(event.pointerId);
+    });
+
+    osloMap.addEventListener("pointermove", (event) => {
+      if (!mapState.isInteracting) {
+        return;
+      }
+      const deltaX = event.clientX - mapState.startX;
+      mapState.rotation = mapState.startRotation + deltaX * 0.4;
+      updateMapTransform();
+    });
+
+    const stopInteraction = (event) => {
+      if (!mapState.isInteracting) {
+        return;
+      }
+      mapState.isInteracting = false;
+      osloMap.classList.remove("is-interacting");
+      osloMap.releasePointerCapture(event.pointerId);
+      resumeSpin();
+    };
+
+    osloMap.addEventListener("pointerup", stopInteraction);
+    osloMap.addEventListener("pointerleave", stopInteraction);
   </script>
 </body>
 </html>
